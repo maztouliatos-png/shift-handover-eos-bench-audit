@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shift Handover · EOS Bench Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+
+<!--
+  ========================= SETUP (do this once) =========================
+  1. Create a free project at https://supabase.com
+  2. Open the SQL Editor (left sidebar) and run everything in
+     supabase-schema.sql (delivered alongside this file).
+  3. Go to Project Settings -> API and copy the "Project URL" and the
+     "anon public" key (NOT the service_role key) into the two lines below.
+  4. Save this file and deploy it (see README.md, delivered alongside it).
+     That's it — no build step, no server, just this one file.
+  ==========================================================================
+-->
+<script>
+  var SUPABASE_URL = "https://latnpojayzonvjyrwsgv.supabase.co";
+  var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxhdG5wb2pheXpvbnZqeXJ3c2d2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgyNzYxNzksImV4cCI6MjEwMzg1MjE3OX0.BTNIlt0MpaSUrWQKGAd-yqQ1riLdbADSeVutJ4pWbdw";
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+
+<style>
+  :root {
+    --bg-page: #E7EBEC;
+    --bg-surface: #FFFFFF;
+    --bg-surface-alt: #F1F4F4;
+    --ink: #16232B;
+    --ink-muted: #55636B;
+    --border: #D2DADD;
+    --border-strong: #B9C4C8;
+    --accent: #B8500E;
+    --accent-ink: #FFFFFF;
+    --focus: #1F6F78;
+
+    --status-good-bg: #E1F2E7;
+    --status-good-fg: #1E7A46;
+    --status-attention-bg: #FBEEDB;
+    --status-attention-fg: #93551A;
+    --status-na-bg: #EAEDEE;
+    --status-na-fg: #5F6B72;
+    --status-unset-border: #C7D0D3;
+
+    --shadow-card: 0 1px 2px rgba(22,35,43,.05), 0 10px 26px rgba(22,35,43,.06);
+    --radius: 14px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg-page: #10171A;
+      --bg-surface: #182124;
+      --bg-surface-alt: #1F2A2E;
+      --ink: #E8EDEF;
+      --ink-muted: #9BA8AE;
+      --border: #2A363B;
+      --border-strong: #3A484D;
+      --accent: #E28643;
+      --accent-ink: #14181A;
+      --focus: #5CC6CF;
+
+      --status-good-bg: #16301F;
+      --status-good-fg: #74D89B;
+      --status-attention-bg: #33260A;
+      --status-attention-fg: #F0B450;
+      --status-na-bg: #212B2F;
+      --status-na-fg: #9AA7AC;
+      --status-unset-border: #3C4A50;
+
+      --shadow-card: 0 1px 2px rgba(0,0,0,.4), 0 10px 26px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg-page: #10171A;
+    --bg-surface: #182124;
+    --bg-surface-alt: #1F2A2E;
+    --ink: #E8EDEF;
+    --ink-muted: #9BA8AE;
+    --border: #2A363B;
+    --border-strong: #3A484D;
+    --accent: #E28643;
+    --accent-ink: #14181A;
+    --focus: #5CC6CF;
+
+    --status-good-bg: #16301F;
+    --status-good-fg: #74D89B;
+    --status-attention-bg: #33260A;
+    --status-attention-fg: #F0B450;
+    --status-na-bg: #212B2F;
+    --status-na-fg: #9AA7AC;
+    --status-unset-border: #3C4A50;
+
+    --shadow-card: 0 1px 2px rgba(0,0,0,.4), 0 10px 26px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg-page);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: "Archivo", "Segoe UI", system-ui, sans-serif; text-wrap: balance; margin: 0; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .area-btn, .topic-note { transition: background-color .15s ease, color .15s ease, border-color .15s ease; }
+  }
+
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  /* ---------- control bar ---------- */
+  .control-bar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .control-bar-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 18px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 18px;
+    flex: none;
+  }
+  .brand-text h1 { font-size: 18px; font-weight: 800; letter-spacing: .01em; }
+  .brand-text p { margin: 2px 0 0; font-size: 12.5px; color: var(--ink-muted); font-family: "IBM Plex Mono", monospace; letter-spacing: .03em; text-transform: uppercase; }
+
+  .view-controls { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+  .control { display: flex; flex-direction: column; gap: 6px; }
+  .control-label { font-size: 11.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-muted); }
+  .date-picker { position: relative; }
+  .date-picker-trigger {
+    font: inherit;
+    font-family: "IBM Plex Sans", sans-serif;
+    padding: 8px 12px;
+    border-radius: 9px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-surface-alt);
+    color: var(--ink);
+    min-width: 190px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+  }
+  .date-picker-icon { opacity: .8; font-size: 14px; }
+  .date-picker-popover {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 20;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    padding: 12px;
+    width: 260px;
+  }
+  .date-picker-popover[data-visible="true"] { display: block; }
+  .date-picker-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .date-nav-btn {
+    font: inherit;
+    background: none;
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+    color: var(--ink);
+    width: 26px;
+    height: 26px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .date-picker-month { font-size: 13.5px; font-weight: 700; }
+  .date-picker-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .date-picker-weekday { font-size: 10.5px; font-weight: 600; color: var(--ink-muted); text-align: center; padding: 4px 0; }
+  .date-picker-day {
+    font: inherit;
+    font-size: 12.5px;
+    background: none;
+    border: none;
+    border-radius: 7px;
+    color: var(--ink);
+    padding: 6px 0;
+    cursor: pointer;
+    text-align: center;
+  }
+  .date-picker-day:hover { background: var(--bg-surface-alt); }
+  .date-picker-day[data-selected="true"] { background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+  .area-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+  .area-btn {
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    padding: 7px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-surface-alt);
+    color: var(--ink-muted);
+    cursor: pointer;
+  }
+  .area-btn[aria-pressed="true"] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--bg-surface);
+  }
+  .dept-control { display: none; }
+  .dept-control[data-visible="true"] { display: flex; }
+  .status-banner {
+    display: none;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 8px 20px 14px;
+    font-size: 13px;
+    color: var(--status-attention-fg);
+  }
+  .status-banner[data-visible="true"] { display: block; }
+  body[data-readonly="true"] .topic-note,
+  body[data-readonly="true"] .signoff-input,
+  body[data-readonly="true"] .bench-picker-trigger,
+  body[data-readonly="true"] .yesno-btn,
+  body[data-readonly="true"] .add-photo-btn,
+  body[data-readonly="true"] .condition-thumb-remove,
+  body[data-mode="summary"] .topic-note,
+  body[data-mode="summary"] .signoff-input,
+  body[data-mode="summary"] .bench-picker-trigger,
+  body[data-mode="summary"] .yesno-btn,
+  body[data-mode="summary"] .add-photo-btn,
+  body[data-mode="summary"] .condition-thumb-remove {
+    pointer-events: none;
+    opacity: .7;
+  }
+  .edit-topics-link {
+    display: block;
+    max-width: 760px;
+    margin: -6px auto 0;
+    padding: 0 20px 14px;
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--focus);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-align: left;
+  }
+  .clear-data-link {
+    display: block;
+    max-width: 760px;
+    width: 100%;
+    margin: 4px auto 0;
+    padding: 14px 20px 0;
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--status-attention-fg);
+    background: none;
+    border: none;
+    border-top: 1px solid var(--border);
+    cursor: pointer;
+    text-decoration: underline;
+    text-align: center;
+  }
+  body[data-mode="board"] .clear-data-link { display: none; }
+
+  .confirm-clear-danger {
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid var(--status-attention-fg);
+    background: var(--status-attention-fg);
+    color: #FFFFFF;
+  }
+
+  /* ---------- main content ---------- */
+  main { max-width: 760px; margin: 0 auto; padding: 24px 20px 64px; }
+
+  .no-handover {
+    display: none;
+    text-align: center;
+    padding: 64px 20px;
+    color: var(--ink-muted);
+    font-size: 15px;
+  }
+  .no-handover[data-visible="true"] { display: block; }
+
+  .date-head { margin-bottom: 18px; }
+  .date-title { font-size: 22px; font-weight: 800; }
+
+  .area-block {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    padding: 18px 20px 20px;
+    margin-bottom: 18px;
+  }
+  .area-head { margin-bottom: 10px; }
+  .area-title { font-size: 16.5px; font-weight: 700; }
+
+  .topic-list { display: flex; flex-direction: column; }
+  .topic-row {
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+  }
+  .topic-row:first-child { border-top: none; }
+
+  .topic-body { min-width: 0; }
+  .topic-label { display: block; font-size: 14.5px; font-weight: 500; }
+  .topic-note {
+    margin-top: 6px;
+    min-height: 1.4em;
+    font-size: 13.5px;
+    color: var(--ink-muted);
+    border-bottom: 1px dashed transparent;
+    outline: none;
+  }
+  .topic-note:focus { color: var(--ink); border-bottom-color: var(--border-strong); }
+  .topic-note:empty::before {
+    content: attr(data-placeholder);
+    color: var(--ink-muted);
+    opacity: .7;
+  }
+  .topic-note[data-required="true"] {
+    border-bottom-color: var(--status-attention-fg);
+  }
+  .topic-note[data-required="true"]:empty::before {
+    color: var(--status-attention-fg);
+    opacity: .9;
+  }
+
+  .bench-picker { position: relative; margin-top: 6px; display: inline-block; }
+  .bench-picker-trigger {
+    font: inherit;
+    font-family: "IBM Plex Sans", sans-serif;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-surface-alt);
+    color: var(--ink);
+    min-width: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    cursor: pointer;
+  }
+  .bench-picker-value:empty::before {
+    content: attr(data-placeholder);
+    color: var(--ink-muted);
+    opacity: .8;
+  }
+  .bench-picker-icon { opacity: .8; font-size: 12px; }
+  .bench-picker-popover {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 20;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    padding: 8px;
+    width: 220px;
+    max-height: 220px;
+    overflow-y: auto;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 4px;
+  }
+  .bench-picker-popover[data-visible="true"] { display: grid; }
+  .bench-picker-option {
+    font: inherit;
+    font-size: 12.5px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--ink);
+    padding: 6px 0;
+    cursor: pointer;
+    text-align: center;
+  }
+  .bench-picker-option:hover { background: var(--bg-surface-alt); }
+  .bench-picker-option[aria-pressed="true"] {
+    background: var(--accent);
+    color: var(--accent-ink);
+    border-color: var(--accent);
+    font-weight: 700;
+  }
+
+  .yesno-buttons { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+  .yesno-btn {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-surface-alt);
+    color: var(--ink-muted);
+    cursor: pointer;
+  }
+  .yesno-btn[aria-pressed="true"] {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--bg-surface);
+  }
+
+  .signoff {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 10px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .signoff-field { display: flex; flex-direction: column; gap: 6px; }
+  .signoff-label { font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-muted); }
+  .signoff-input {
+    font: inherit;
+    font-family: "IBM Plex Sans", sans-serif;
+    padding: 9px 12px;
+    border-radius: 9px;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-surface-alt);
+    color: var(--ink);
+  }
+
+  @media (max-width: 560px) {
+    .signoff { grid-template-columns: 1fr; }
+  }
+
+  /* ---------- save & clear / save audit ---------- */
+  .area-save-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .save-area-btn, .save-audit-btn {
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 9px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  .save-area-btn:disabled, .save-audit-btn:disabled { opacity: .6; cursor: default; }
+  .save-status {
+    display: none;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--focus);
+  }
+  .save-status[data-visible="true"] { display: inline-block; }
+  .save-status[data-kind="error"] { color: var(--status-attention-fg); }
+  .save-error {
+    display: none;
+    font-size: 12.5px;
+    color: var(--status-attention-fg);
+    margin: 8px 0 0;
+  }
+  .save-error[data-visible="true"] { display: block; }
+
+  .saved-list {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+  .saved-list-title {
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    margin-bottom: 8px;
+  }
+  .saved-entry {
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
+  }
+  .saved-entry:first-child { border-top: none; }
+  .saved-entry-when { font-size: 12px; font-weight: 700; color: var(--ink-muted); margin-bottom: 4px; }
+  .saved-topic { font-size: 13px; margin: 3px 0; }
+  .saved-topic-label { font-weight: 500; }
+  .saved-topic-note { color: var(--ink-muted); }
+  .saved-signoff { font-size: 12.5px; color: var(--ink-muted); margin-top: 6px; }
+
+  body[data-readonly="true"] .save-area-btn,
+  body[data-readonly="true"] .save-audit-btn,
+  body[data-mode="summary"] .save-area-btn,
+  body[data-mode="summary"] .save-audit-btn {
+    display: none;
+  }
+
+  /* ---------- photos ---------- */
+  .condition-photos { margin-top: 10px; }
+  .add-photo-btn {
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 7px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-surface-alt);
+    color: var(--ink);
+  }
+  .add-photo-btn[disabled] { cursor: default; opacity: .5; }
+  .question-photo-btn { padding: 6px 10px; font-size: 14px; line-height: 1; }
+  .condition-photo-input { display: none; }
+  .condition-thumbs, .saved-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .condition-thumb { position: relative; width: 64px; height: 64px; }
+  .condition-thumb img, .saved-thumb-img {
+    width: 64px; height: 64px; object-fit: cover; border-radius: 8px;
+    border: 1px solid var(--border-strong); display: block;
+  }
+  .condition-thumb.uploading img { opacity: .5; }
+  .condition-thumb-remove {
+    position: absolute; top: -6px; right: -6px; width: 18px; height: 18px;
+    line-height: 16px; padding: 0; border-radius: 50%;
+    border: 1px solid var(--border-strong); background: var(--bg-surface);
+    color: var(--ink); font-size: 12px; cursor: pointer;
+  }
+
+  /* ---------- mode toggle ---------- */
+  .mode-toggle { max-width: 760px; margin: 0 auto; padding: 0 20px 14px; display: flex; gap: 6px; }
+  .mode-btn {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px;
+    border-radius: 8px; border: 1px solid var(--border-strong);
+    background: var(--bg-surface-alt); color: var(--ink-muted); cursor: pointer;
+  }
+  .mode-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+  /* ---------- passcode / dialog overlays ---------- */
+  .passcode-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(16,23,26,.55);
+    align-items: center; justify-content: center; z-index: 100; padding: 20px;
+  }
+  .passcode-overlay[data-visible="true"] { display: flex; }
+  .passcode-box {
+    background: var(--bg-surface); border-radius: var(--radius); box-shadow: var(--shadow-card);
+    padding: 24px; max-width: 320px; width: 100%;
+  }
+  .passcode-title { font-size: 17px; font-weight: 800; margin: 0 0 6px; }
+  .passcode-sub { font-size: 13px; color: var(--ink-muted); margin: 0 0 14px; }
+  .passcode-input {
+    font: inherit; width: 100%; padding: 10px 12px; border-radius: 9px;
+    border: 1px solid var(--border-strong); background: var(--bg-surface-alt); color: var(--ink);
+    letter-spacing: .12em; text-align: center; font-size: 16px;
+  }
+  .passcode-error { display: none; font-size: 12.5px; color: var(--status-attention-fg); margin: 8px 0 0; }
+  .passcode-error[data-visible="true"] { display: block; }
+  .passcode-actions { display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end; }
+  .passcode-cancel, .passcode-submit {
+    font: inherit; font-size: 13.5px; font-weight: 600; padding: 8px 14px;
+    border-radius: 8px; cursor: pointer; border: 1px solid var(--border-strong);
+  }
+  .passcode-cancel { background: var(--bg-surface-alt); color: var(--ink); }
+  .passcode-submit { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+  /* ---------- topics editor ---------- */
+  .topics-editor-box { max-width: 460px; }
+  .topics-editor-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .topics-editor-input {
+    font: inherit; flex: 1; padding: 8px 10px; border-radius: 8px;
+    border: 1px solid var(--border-strong); background: var(--bg-surface-alt); color: var(--ink);
+  }
+  .topics-editor-btn {
+    font: inherit; font-size: 13px; background: var(--bg-surface-alt);
+    border: 1px solid var(--border-strong); border-radius: 7px; color: var(--ink-muted);
+    width: 26px; height: 26px; cursor: pointer; line-height: 1; flex: none;
+  }
+  .topics-editor-btn:hover { color: var(--ink); }
+  .topics-editor-add {
+    font: inherit; font-size: 12.5px; font-weight: 600; background: none;
+    border: none; color: var(--focus); cursor: pointer; padding: 4px 0;
+  }
+  .topics-editor-error { display: none; font-size: 12.5px; color: var(--status-attention-fg); margin: 4px 0 0; }
+  .topics-editor-error[data-visible="true"] { display: block; }
+  .topics-editor-actions { display: flex; gap: 10px; margin-top: 16px; justify-content: flex-end; }
+</style>
+</head>
+<body data-mode="board" data-readonly="false">
+
+<div class="control-bar">
+  <div class="control-bar-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">&#8644;</span>
+      <div class="brand-text">
+        <h1>Shift Handover &middot; EOS Bench Audit</h1>
+        <p>Handover &middot; EOS Bench Audit</p>
+      </div>
+    </div>
+    <div class="view-controls">
+      <div class="control">
+        <span class="control-label">Date</span>
+        <div class="date-picker" id="datePicker">
+          <button type="button" class="date-picker-trigger" id="dateTrigger" aria-haspopup="dialog" aria-expanded="false">
+            <span id="dateTriggerLabel">Today</span>
+            <span class="date-picker-icon" aria-hidden="true">&#128197;</span>
+          </button>
+          <div class="date-picker-popover" id="datePopover" data-visible="false" role="dialog" aria-label="Choose date">
+            <div class="date-picker-nav">
+              <button type="button" class="date-nav-btn" id="calPrevMonth" aria-label="Previous month">&lsaquo;</button>
+              <span class="date-picker-month" id="calMonthLabel"></span>
+              <button type="button" class="date-nav-btn" id="calNextMonth" aria-label="Next month">&rsaquo;</button>
+            </div>
+            <div class="date-picker-grid" id="calGrid"></div>
+          </div>
+        </div>
+      </div>
+      <label class="control">
+        <span class="control-label">Shift</span>
+        <select id="shiftSelect" aria-label="Select shift">
+          <option value="AM">AM</option>
+          <option value="PM">PM</option>
+          <option value="NS">NS</option>
+        </select>
+      </label>
+      <div class="control">
+        <span class="control-label">Area</span>
+        <div class="area-buttons" id="areaFilter" role="group" aria-label="Filter by area">
+          <button type="button" class="area-btn" data-area="all" aria-pressed="true">All</button>
+          <button type="button" class="area-btn" data-area="handover" aria-pressed="false">Handover</button>
+          <button type="button" class="area-btn" data-area="benchaudit" aria-pressed="false">EOS Bench Audit</button>
+        </div>
+      </div>
+      <label class="control dept-control" id="deptControl" data-visible="false">
+        <span class="control-label">Department</span>
+        <select id="deptSelect" aria-label="Select department">
+          <option value="all">All</option>
+          <option value="inbound">Inbound</option>
+          <option value="pick">Pick</option>
+          <option value="pack">Pack</option>
+          <option value="despatch">Despatch</option>
+        </select>
+      </label>
+    </div>
+  </div>
+  <div class="mode-toggle" id="modeToggle" role="group" aria-label="Board mode">
+    <button type="button" class="mode-btn" data-mode="board" aria-pressed="true">Board</button>
+    <button type="button" class="mode-btn" data-mode="summary" aria-pressed="false">Summary</button>
+  </div>
+  <p class="status-banner" id="configBanner" data-visible="false"></p>
+  <p class="status-banner" id="saveErrorNote" data-visible="false">Couldn't save your last change &mdash; it'll keep retrying. Check your connection before navigating away.</p>
+  <button type="button" class="edit-topics-link" id="editTopicsBtn">Edit checklist topics</button>
+  <button type="button" class="clear-data-link" id="clearDataBtn">Clear all summary data</button>
+</div>
+
+<main id="app">
+  <p class="no-handover" data-visible="false" id="noHandoverMsg">Nothing to show for this date, shift and filter yet.</p>
+</main>
+
+<!-- ---- passcode gate ---- -->
+<div class="passcode-overlay" id="passcodeOverlay" data-visible="false" role="dialog" aria-modal="true" aria-label="Enter passcode">
+  <div class="passcode-box">
+    <h2 class="passcode-title">Enter passcode</h2>
+    <p class="passcode-sub" id="passcodeSub">Previous handovers are locked. Enter the shared passcode to view them.</p>
+    <input type="password" inputmode="numeric" class="passcode-input" id="passcodeInput" autocomplete="off" aria-label="Passcode">
+    <p class="passcode-error" id="passcodeError" data-visible="false">Incorrect passcode &mdash; try again.</p>
+    <div class="passcode-actions">
+      <button type="button" class="passcode-cancel" id="passcodeCancel">Cancel</button>
+      <button type="button" class="passcode-submit" id="passcodeSubmit">Unlock</button>
+    </div>
+  </div>
+</div>
+
+<!-- ---- confirm clear ---- -->
+<div class="passcode-overlay" id="confirmClearOverlay" data-visible="false" role="dialog" aria-modal="true" aria-label="Clear all summary data">
+  <div class="passcode-box">
+    <h2 class="passcode-title">Clear all summary data?</h2>
+    <p class="passcode-sub">This permanently deletes every logged handover and completed bench audit, for every date and shift. This can't be undone.</p>
+    <div class="passcode-actions">
+      <button type="button" class="passcode-cancel" id="confirmClearCancel">Cancel</button>
+      <button type="button" class="confirm-clear-danger" id="confirmClearGo">Clear all data</button>
+    </div>
+  </div>
+</div>
+
+<!-- ---- edit checklist topics ---- -->
+<div class="passcode-overlay" id="topicsEditorOverlay" data-visible="false" role="dialog" aria-modal="true" aria-label="Edit checklist topics">
+  <div class="passcode-box topics-editor-box">
+    <h2 class="passcode-title">Edit checklist topics</h2>
+    <p class="passcode-sub" id="topicsEditorDept"></p>
+    <div id="topicsEditorBody"></div>
+    <button type="button" class="topics-editor-add" id="topicsEditorAdd">+ Add topic</button>
+    <p class="topics-editor-error" id="topicsEditorError" data-visible="false">Every topic needs some wording, and you need at least one topic.</p>
+    <div class="topics-editor-actions">
+      <button type="button" class="passcode-cancel" id="topicsEditorCancel">Cancel</button>
+      <button type="button" class="passcode-submit" id="topicsEditorSave">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
