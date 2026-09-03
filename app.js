@@ -86,7 +86,7 @@
 
   function freshHandoverDraft(areaKey) {
     return {
-      topics: topicsFor(areaKey).map(function (label) { return { label: label, note: '' }; }),
+      topics: topicsFor(areaKey).map(function (label) { return { label: label, result: '', note: '' }; }),
       given: '', received: ''
     };
   }
@@ -107,8 +107,10 @@
       var master = topicsFor(areaKey);
       var d = DRAFTS[comboKey][areaKey];
       d.topics = master.map(function (label, idx) {
-        var note = (d.topics[idx] && typeof d.topics[idx].note === 'string') ? d.topics[idx].note : '';
-        return { label: label, note: note };
+        var prev = d.topics[idx];
+        var note = (prev && typeof prev.note === 'string') ? prev.note : '';
+        var result = (prev && typeof prev.result === 'string') ? prev.result : '';
+        return { label: label, result: result, note: note };
       });
     }
     return DRAFTS[comboKey][areaKey];
@@ -489,10 +491,10 @@
     var card = el('div', { class: 'saved-entry' });
     card.appendChild(textEl('div', 'saved-entry-when', formatSavedWhen(snapshot.savedAt)));
     (snapshot.topics || []).forEach(function (t) {
-      if (!t.note) return;
+      if (!t.result && !t.note) return;
       var row = el('div', { class: 'saved-topic' });
       row.appendChild(textEl('span', 'saved-topic-label', t.label + ': '));
-      row.appendChild(textEl('span', 'saved-topic-note', t.note));
+      row.appendChild(textEl('span', 'saved-topic-note', (t.result || '—') + (t.note ? ' — ' + t.note : '')));
       card.appendChild(row);
     });
     var cond = snapshot.condition;
@@ -560,7 +562,11 @@
   }
 
   async function saveHandoverArea(comboKey, areaKey, draft, btnRow, errEl) {
-    var missing = draft.topics.some(function (t) { return !t.note || !t.note.trim(); });
+    var missing = draft.topics.some(function (t) {
+      if (!t.result) return true;
+      if (t.result === 'No' && !(t.note && t.note.trim())) return true;
+      return false;
+    });
     var signoffMissing = !(draft.given && draft.given.trim()) || !(draft.received && draft.received.trim());
     if (missing || signoffMissing) { errEl.setAttribute('data-visible', 'true'); return; }
     errEl.setAttribute('data-visible', 'false');
@@ -568,7 +574,7 @@
     var parts = comboKey.split('|'); var date = parts[0], shift = parts[1];
     var row = {
       id: makeId(), date: date, shift: shift, area: areaKey,
-      topics: draft.topics.map(function (t) { return { label: t.label, note: t.note }; }),
+      topics: draft.topics.map(function (t) { return { label: t.label, result: t.result, note: t.note }; }),
       condition: null, // no longer collected — kept so old rows with data still read fine
       given_by: draft.given || '', received_by: draft.received || ''
     };
@@ -787,10 +793,14 @@
     } else {
       var d = ensureDraft(comboKey, area.key);
 
-      // Every box must be filled before Save is clickable: every topic's
-      // note, and both signoff names.
+      // Every box must be filled before Save is clickable: every topic
+      // answered Yes/No, a comment on any "No" answer, and both signoff names.
       function isHandoverValid() {
-        var topicsOk = d.topics.every(function (t) { return t.note && t.note.trim(); });
+        var topicsOk = d.topics.every(function (t) {
+          if (!t.result) return false;
+          if (t.result === 'No' && !(t.note && t.note.trim())) return false;
+          return true;
+        });
         return topicsOk && !!(d.given && d.given.trim()) && !!(d.received && d.received.trim());
       }
       function updateHandoverValidity() {
@@ -799,8 +809,13 @@
         errEl2.setAttribute('data-visible', valid ? 'false' : 'true');
       }
 
-      d.topics.forEach(function (t, idx) {
-        list.appendChild(buildTextTopicRow(t, idx, function (i, val) { d.topics[i].note = val; updateHandoverValidity(); }));
+      d.topics.forEach(function (t) {
+        list.appendChild(buildYesNoRow({
+          label: t.label, options: ['Yes', 'No'], mandatoryOn: 'No',
+          prefill: t,
+          onAnswer: function (v) { t.result = v; updateHandoverValidity(); },
+          onNote: function (v) { t.note = v; updateHandoverValidity(); }
+        }));
       });
       block.appendChild(list);
       block.appendChild(buildSignoff(d.given, d.received, function (which, v) { d[which] = v; updateHandoverValidity(); }));
@@ -809,7 +824,7 @@
       var saveBtn2 = el('button', { type: 'button', class: 'save-area-btn' }); saveBtn2.textContent = 'Save handover';
       var status2 = el('span', { class: 'save-status', 'data-visible': 'false' });
       saveRow2.appendChild(saveBtn2); saveRow2.appendChild(status2);
-      var errEl2 = el('p', { class: 'save-error', 'data-visible': 'false' }); errEl2.textContent = 'Fill in a comment for every topic and sign off both names before saving.';
+      var errEl2 = el('p', { class: 'save-error', 'data-visible': 'false' }); errEl2.textContent = 'Answer every question, add a comment for any "No" answer, and sign off both names before saving.';
       saveBtn2.addEventListener('click', function () { saveHandoverArea(comboKey, area.key, d, saveRow2, errEl2); });
       block.appendChild(saveRow2);
       block.appendChild(errEl2);
