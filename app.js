@@ -32,7 +32,11 @@
     { label: 'Are consumables stored in the correct designated locations at the bench and labelled correctly?', options: ['Yes', 'No'], mandatoryOn: 'No' },
     { label: 'Are the hygiene items in the designated location at the bench?', options: ['Yes', 'No'], mandatoryOn: 'No' },
     { label: 'Void fill boxes filled?', options: ['Yes', 'No'], mandatoryOn: 'No' },
-    { label: 'Is the pack bench clean?', options: ['Yes', 'No'], mandatoryOn: 'No', photos: true }
+    // photosOnFail: the "Add photo" camera button only appears once the
+    // answer is the mandatory-comment one ("No") — a photo is only useful
+    // to show what's wrong. Photos already attached stay visible even if
+    // the answer is changed back to "Yes" afterwards.
+    { label: 'Is the pack bench clean?', options: ['Yes', 'No'], mandatoryOn: 'No', photos: true, photosOnFail: true }
   ];
 
   function getAreas() {
@@ -383,13 +387,41 @@
   }
 
   function buildYesNoRow(opts) {
-    // opts: { label, options, mandatoryOn, prefill:{result,note,photos}, allowPhotos, onAnswer(val), onNote(val), onAddPhotos(files), onRemovePhoto(id) }
+    // opts: { label, options, mandatoryOn, prefill:{result,note,photos}, allowPhotos, photosOnFail, onAnswer(val), onNote(val), onAddPhotos(files), onRemovePhoto(id) }
     var row = el('div', { class: 'topic-row' });
     var body = el('div', { class: 'topic-body' });
     body.appendChild(textEl('span', 'topic-label', opts.label));
 
     var btnWrap = el('div', { class: 'yesno-buttons', role: 'group', 'aria-label': opts.label });
     var prefill = opts.prefill || { result: '', note: '', photos: [] };
+
+    // The photo-add control is built once (so its event listeners aren't
+    // re-wired on every answer change) and then shown/hidden in place —
+    // when photosOnFail is set, it only appears once the answer is the
+    // mandatory-comment one, matching the same "only offer a photo on a
+    // failing answer" rule used for comments.
+    var addBtn = null, fileInput = null;
+    if (opts.allowPhotos) {
+      addBtn = el('button', { type: 'button', class: 'add-photo-btn question-photo-btn', 'aria-label': 'Add photo' });
+      addBtn.textContent = '📷';
+      fileInput = el('input', { type: 'file', accept: 'image/*', capture: 'environment', multiple: 'true', class: 'condition-photo-input' });
+      fileInput.addEventListener('change', function () { opts.onAddPhotos(fileInput.files); fileInput.value = ''; });
+      addBtn.addEventListener('click', function () { fileInput.click(); });
+    }
+    function updatePhotoButtonVisibility() {
+      if (!opts.allowPhotos) return;
+      var shouldShow = !opts.photosOnFail || prefill.result === opts.mandatoryOn;
+      if (shouldShow) {
+        var atCap = (prefill.photos || []).length >= MAX_CONDITION_PHOTOS;
+        addBtn.setAttribute('aria-label', atCap ? 'Photo limit reached' : 'Add photo');
+        if (atCap) addBtn.setAttribute('disabled', 'true'); else addBtn.removeAttribute('disabled');
+        if (!addBtn.parentNode) { btnWrap.appendChild(addBtn); btnWrap.appendChild(fileInput); }
+      } else if (addBtn.parentNode) {
+        btnWrap.removeChild(addBtn);
+        btnWrap.removeChild(fileInput);
+      }
+    }
+
     opts.options.forEach(function (optVal) {
       var b = el('button', { type: 'button', class: 'yesno-btn', 'aria-pressed': (prefill.result === optVal) ? 'true' : 'false' });
       b.textContent = optVal;
@@ -399,22 +431,13 @@
         if (next) b.setAttribute('aria-pressed', 'true');
         prefill.result = next;
         updateMandatoryState(row, opts.mandatoryOn, next);
+        updatePhotoButtonVisibility();
         opts.onAnswer(next);
       });
       btnWrap.appendChild(b);
     });
 
-    if (opts.allowPhotos) {
-      var atCap = (prefill.photos || []).length >= MAX_CONDITION_PHOTOS;
-      var addBtn = el('button', { type: 'button', class: 'add-photo-btn question-photo-btn', 'aria-label': atCap ? 'Photo limit reached' : 'Add photo' });
-      if (atCap) addBtn.setAttribute('disabled', 'true');
-      addBtn.textContent = '📷';
-      var fileInput = el('input', { type: 'file', accept: 'image/*', capture: 'environment', multiple: 'true', class: 'condition-photo-input' });
-      fileInput.addEventListener('change', function () { opts.onAddPhotos(fileInput.files); fileInput.value = ''; });
-      addBtn.addEventListener('click', function () { fileInput.click(); });
-      btnWrap.appendChild(addBtn);
-      btnWrap.appendChild(fileInput);
-    }
+    updatePhotoButtonVisibility();
     body.appendChild(btnWrap);
 
     var note = el('div', { class: 'topic-note', contenteditable: 'true', 'data-placeholder': 'Add a note…' });
@@ -766,7 +789,7 @@
       BENCH_AUDIT_QUESTIONS.forEach(function (q, idx) {
         var a = draft.answers[idx];
         list.appendChild(buildYesNoRow({
-          label: q.label, options: q.options, mandatoryOn: q.mandatoryOn, allowPhotos: !!q.photos,
+          label: q.label, options: q.options, mandatoryOn: q.mandatoryOn, allowPhotos: !!q.photos, photosOnFail: !!q.photosOnFail,
           prefill: a,
           onAnswer: function (v) { a.result = v; updateBenchValidity(); },
           onNote: function (v) { a.note = v; updateBenchValidity(); },
@@ -1102,6 +1125,18 @@
     }
     renderMain();
   }
+
+  // Photo thumbnails are kept small so the checklist stays compact, but
+  // they should still be viewable at full size on demand. One delegated
+  // listener on the app container (attached once, not re-attached on every
+  // renderMain()) covers both in-progress draft photos (.condition-thumb
+  // img) and saved/summary ones (.saved-thumb-img) across every re-render.
+  document.getElementById('app').addEventListener('click', function (e) {
+    var img = e.target.closest('.condition-thumb img, .saved-thumb-img');
+    if (!img) return;
+    var src = img.getAttribute('src');
+    if (src) window.open(src, '_blank');
+  });
 
   init();
 })();
