@@ -697,10 +697,20 @@
   // ======================================================================
   var view = { date: todayStr(), shift: 'AM', area: 'all', dept: 'all', mode: 'board' };
   var summaryExportMsg = '';
+  // Which audit type the Export CSV button covers — its own pill row inside
+  // the export bar, independent of the page's Area/Department filter above
+  // (same idea as the Picking & Packing board, where the export type pills
+  // are separate from the Log page's own type tabs). No "All" option here.
+  var EXPORT_TYPES = [{ key: 'handover', label: 'Handover' }, { key: 'benchaudit', label: 'EOS Bench Audit' }];
+  var exportType = 'handover';
+  function exportAreasForType() {
+    return getAreas().filter(function (a) {
+      return exportType === 'benchaudit' ? a.key === 'benchaudit' : a.key !== 'benchaudit';
+    });
+  }
 
-  // The same Area/Department filtering renderMain() uses to decide which
-  // area cards to show — pulled out so the CSV export can scope itself to
-  // exactly what Summary is currently displaying.
+  // The Area/Department filtering renderMain() uses to decide which area
+  // cards to show in the list below.
   function computeShowAreas() {
     return getAreas().filter(function (a) {
       if (view.area === 'handover') return a.key !== 'benchaudit';
@@ -776,23 +786,24 @@
   }
 
   // A plain, ordinary browser download — no special capability needed,
-  // works for every visitor. Scoped to whatever Summary is currently
-  // showing (the selected date, shift, Area and Department filters).
+  // works for every visitor. Scoped to the selected date + shift and to
+  // whichever export type pill (Handover / EOS Bench Audit) is active.
   function exportSummaryCsv() {
     var comboKey = comboKeyOf(view.date, view.shift);
-    var rows = summaryRowsForAreas(comboKey, computeShowAreas());
+    var rows = summaryRowsForAreas(comboKey, exportAreasForType());
     if (!rows.length) return;
     var csv = buildSummaryCsv(rows);
     var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
+    var typeLabel = EXPORT_TYPES.filter(function (t) { return t.key === exportType; })[0].label;
     a.href = url;
-    a.download = 'shift-handover-' + view.date + '-' + view.shift + '.csv';
+    a.download = 'shift-handover-' + view.date + '-' + view.shift + '-' + typeLabel.replace(/\s+/g, '-') + '.csv';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-    summaryExportMsg = 'Exported ' + rows.length + ' ' + (rows.length === 1 ? 'entry' : 'entries') + ' for ' + formatDateLabel(view.date) + ' (' + view.shift + ') to CSV.';
+    summaryExportMsg = 'Exported ' + rows.length + ' ' + typeLabel + ' ' + (rows.length === 1 ? 'entry' : 'entries') + ' for ' + formatDateLabel(view.date) + ' (' + view.shift + ') to CSV.';
     renderMain();
   }
 
@@ -968,14 +979,27 @@
     app.appendChild(head);
 
     if (view.mode === 'summary') {
-      var exportRows = summaryRowsForAreas(comboKey, showAreas);
+      var exportRows = summaryRowsForAreas(comboKey, exportAreasForType());
       var exportBar = el('div', { class: 'exportbar' });
-      exportBar.appendChild(textEl('span', 'exportbar-count', exportRows.length + ' ' + (exportRows.length === 1 ? 'entry' : 'entries') + ' logged for this date, shift and filter'));
+      exportBar.appendChild(textEl('span', 'exportbar-count', exportRows.length + ' ' + (exportRows.length === 1 ? 'entry' : 'entries') + ' logged for this date and shift'));
+
+      var exportActions = el('span', { class: 'exportbar-actions' });
+      var exportTypePills = el('div', { class: 'exporttype-pills' });
+      EXPORT_TYPES.forEach(function (t) {
+        var pillBtn = el('button', { type: 'button', class: 'exporttype-btn', 'aria-pressed': (exportType === t.key) ? 'true' : 'false' });
+        pillBtn.textContent = t.label;
+        pillBtn.addEventListener('click', function () { exportType = t.key; renderMain(); });
+        exportTypePills.appendChild(pillBtn);
+      });
+      exportActions.appendChild(exportTypePills);
+
       var exportBtn = el('button', { type: 'button', class: 'export-csv-btn' });
       exportBtn.textContent = 'Export CSV';
       if (!exportRows.length) exportBtn.setAttribute('disabled', 'true');
       exportBtn.addEventListener('click', exportSummaryCsv);
-      exportBar.appendChild(exportBtn);
+      exportActions.appendChild(exportBtn);
+
+      exportBar.appendChild(exportActions);
       app.appendChild(exportBar);
       if (summaryExportMsg) app.appendChild(textEl('p', 'exportmsg', summaryExportMsg));
     }
