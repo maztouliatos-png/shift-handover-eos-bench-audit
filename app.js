@@ -695,7 +695,7 @@
   // ======================================================================
   // Main render
   // ======================================================================
-  var view = { date: todayStr(), shift: 'AM', area: 'all', dept: 'all', mode: 'board' };
+  var view = { date: todayStr(), shift: 'AM', area: 'handover', dept: 'all', mode: 'board' };
   var summaryExportMsg = '';
   // Which audit type the Export CSV button covers — its own pill row inside
   // the export bar, independent of the page's Area/Department filter above
@@ -1187,10 +1187,7 @@
 
   document.getElementById('areaFilter').addEventListener('click', function (e) {
     var btn = e.target.closest('.area-btn'); if (!btn) return;
-    var clicked = btn.getAttribute('data-area');
-    // Handover / EOS Bench Audit act as toggles: pressing the one that's
-    // already selected retracts back to "All" instead of doing nothing.
-    var next = (clicked !== 'all' && view.area === clicked) ? 'all' : clicked;
+    var next = btn.getAttribute('data-area');
     Array.from(this.querySelectorAll('.area-btn')).forEach(function (b) {
       b.setAttribute('aria-pressed', b.getAttribute('data-area') === next ? 'true' : 'false');
     });
