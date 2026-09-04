@@ -345,6 +345,30 @@
   .date-head { margin-bottom: 18px; }
   .date-title { font-size: 22px; font-weight: 800; }
 
+  .exportbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    background: var(--bg-surface-alt); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow-card); padding: 12px 16px; margin: 0 0 16px;
+  }
+  .exportbar-count { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+  .exportmsg { font-size: 12.5px; color: var(--ink-muted); margin: -8px 0 16px; }
+
+  /* Deliberately its own class, not .save-area-btn/.save-audit-btn — those
+     are hidden in Summary mode (see the data-mode="summary" rule below),
+     but Export CSV is only ever shown in Summary mode. */
+  .export-csv-btn {
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid var(--accent);
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  .export-csv-btn:disabled { opacity: .6; cursor: default; }
+
   .area-block {
     background: var(--bg-surface);
     border: 1px solid var(--border);
