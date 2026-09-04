@@ -696,6 +696,105 @@
   // Main render
   // ======================================================================
   var view = { date: todayStr(), shift: 'AM', area: 'all', dept: 'all', mode: 'board' };
+  var summaryExportMsg = '';
+
+  // The same Area/Department filtering renderMain() uses to decide which
+  // area cards to show — pulled out so the CSV export can scope itself to
+  // exactly what Summary is currently displaying.
+  function computeShowAreas() {
+    return getAreas().filter(function (a) {
+      if (view.area === 'handover') return a.key !== 'benchaudit';
+      if (view.area === 'benchaudit') return a.key === 'benchaudit';
+      return true;
+    }).filter(function (a) {
+      if (a.key === 'benchaudit') return true;
+      if (view.dept === 'all') return true;
+      return a.key === view.dept;
+    });
+  }
+
+  // ======================================================================
+  // CSV export (Summary) — same idea as the Picking & Packing board's
+  // export: one row per saved entry, columns padded out to however many
+  // questions the widest entry being exported has. Handover topics and
+  // bench-audit questions are flattened into the same {text,result,note,
+  // photos} shape so both areas can share one CSV.
+  // ======================================================================
+  function csvCell(v) {
+    var s = String(v == null ? '' : v);
+    if (/[",\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  function csvRow(cells) { return cells.map(csvCell).join(','); }
+
+  function summaryRowsForAreas(comboKey, areas) {
+    var rows = [];
+    areas.forEach(function (a) {
+      var hist = a.key === 'benchaudit'
+        ? ((HISTORY[comboKey] && HISTORY[comboKey].benchaudit) || [])
+        : ((HISTORY[comboKey] && HISTORY[comboKey][a.key]) || []);
+      hist.forEach(function (entry) {
+        if (a.key === 'benchaudit') {
+          var qs = BENCH_AUDIT_QUESTIONS.map(function (q, i) {
+            var ans = entry.answers[i] || {};
+            return { text: q.label, result: ans.result || '', note: ans.note || '', photos: ans.photos || [] };
+          });
+          rows.push({ area: a.label, auditor: entry.auditor || '', bench: entry.bench || '', opId: entry.opId || '', given: '', received: '', questions: qs });
+        } else {
+          var qs2 = (entry.topics || []).map(function (t) { return { text: t.label, result: t.result || '', note: t.note || '', photos: [] }; });
+          var cond = entry.condition;
+          if (cond && (cond.answer || cond.note || (cond.photos && cond.photos.length))) {
+            qs2.push({ text: 'Overall pick condition', result: cond.answer || '', note: cond.note || '', photos: cond.photos || [] });
+          }
+          rows.push({ area: a.label, auditor: '', bench: '', opId: '', given: entry.given || '', received: entry.received || '', questions: qs2 });
+        }
+      });
+    });
+    return rows;
+  }
+
+  function buildSummaryCsv(rows) {
+    var maxQ = 0;
+    rows.forEach(function (r) { if (r.questions.length > maxQ) maxQ = r.questions.length; });
+    var header = ['Date', 'Shift', 'Area', 'Auditor', 'Bench', 'Op ID', 'Given By', 'Received By'];
+    for (var i = 1; i <= maxQ; i++) { header.push('Question ' + i, 'Answer ' + i, 'Comment ' + i, 'Photos ' + i); }
+    var lines = [csvRow(header)];
+    rows.forEach(function (r) {
+      var row = [view.date, view.shift, r.area, r.auditor, r.bench, r.opId, r.given, r.received];
+      for (var i = 0; i < maxQ; i++) {
+        var q = r.questions[i];
+        if (q) {
+          var photoPaths = (q.photos || []).map(function (p) { return p.path; }).filter(Boolean).join('; ');
+          row.push(q.text || '', q.result || '', q.note || '', photoPaths);
+        } else {
+          row.push('', '', '', '');
+        }
+      }
+      lines.push(csvRow(row));
+    });
+    return '﻿' + lines.join('\r\n') + '\r\n';
+  }
+
+  // A plain, ordinary browser download — no special capability needed,
+  // works for every visitor. Scoped to whatever Summary is currently
+  // showing (the selected date, shift, Area and Department filters).
+  function exportSummaryCsv() {
+    var comboKey = comboKeyOf(view.date, view.shift);
+    var rows = summaryRowsForAreas(comboKey, computeShowAreas());
+    if (!rows.length) return;
+    var csv = buildSummaryCsv(rows);
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'shift-handover-' + view.date + '-' + view.shift + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    summaryExportMsg = 'Exported ' + rows.length + ' ' + (rows.length === 1 ? 'entry' : 'entries') + ' for ' + formatDateLabel(view.date) + ' (' + view.shift + ') to CSV.';
+    renderMain();
+  }
 
   // In Summary mode the checklist/question form is never shown — just the
   // area title and whatever's already been saved for the selected date and
@@ -861,22 +960,25 @@
   function renderMain() {
     var app = document.getElementById('app');
     var comboKey = comboKeyOf(view.date, view.shift);
-    var areas = getAreas();
-
-    var showAreas = areas.filter(function (a) {
-      if (view.area === 'handover') return a.key !== 'benchaudit';
-      if (view.area === 'benchaudit') return a.key === 'benchaudit';
-      return true;
-    }).filter(function (a) {
-      if (a.key === 'benchaudit') return true;
-      if (view.dept === 'all') return true;
-      return a.key === view.dept;
-    });
+    var showAreas = computeShowAreas();
 
     app.innerHTML = '';
     var head = el('div', { class: 'date-head' });
     head.appendChild(textEl('h2', 'date-title', formatDateLabel(view.date) + ' — ' + view.shift));
     app.appendChild(head);
+
+    if (view.mode === 'summary') {
+      var exportRows = summaryRowsForAreas(comboKey, showAreas);
+      var exportBar = el('div', { class: 'exportbar' });
+      exportBar.appendChild(textEl('span', 'exportbar-count', exportRows.length + ' ' + (exportRows.length === 1 ? 'entry' : 'entries') + ' logged for this date, shift and filter'));
+      var exportBtn = el('button', { type: 'button', class: 'export-csv-btn' });
+      exportBtn.textContent = 'Export CSV';
+      if (!exportRows.length) exportBtn.setAttribute('disabled', 'true');
+      exportBtn.addEventListener('click', exportSummaryCsv);
+      exportBar.appendChild(exportBtn);
+      app.appendChild(exportBar);
+      if (summaryExportMsg) app.appendChild(textEl('p', 'exportmsg', summaryExportMsg));
+    }
 
     var builtBlocks = showAreas.map(function (a) { return buildAreaBlock(a, comboKey); }).filter(Boolean);
 
